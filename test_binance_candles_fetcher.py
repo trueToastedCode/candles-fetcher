@@ -30,9 +30,17 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
             self.on_open = kwargs.get('on_open')
             self.on_message = kwargs.get('on_message')
 
+    class MockClient(Client):
+        """Mock Client for testing purposes."""
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close_connection(self, *args, **kwargs):
+            pass
+
     BinanceCandlesFetcher = build_binance_candles_fetcher(
         MockWebSocketApp,
-        Client
+        MockClient
     )
 
     def setUp(self):
@@ -60,7 +68,8 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
                     'o': x[1],  # Open
                     'h': x[2],  # High
                     'c': x[3],  # Low
-                    'l': x[4]   # Close
+                    'l': x[4],  # Close
+                    'x': True   # Candle closed
                 }
             },
             data[110:]
@@ -192,11 +201,11 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         """
         # Test all intervals
         intervals = [
-            (TimeFrame.ONE_MIN, '1min'),
-            (TimeFrame.THREE_MIN, '3min'),
-            (TimeFrame.FIVE_MIN, '5min'),
-            (TimeFrame.FIFTEEN_MIN, '15min'),
-            (TimeFrame.THIRTY_MIN, '30min'),
+            (TimeFrame.ONE_MIN, '1m'),
+            (TimeFrame.THREE_MIN, '3m'),
+            (TimeFrame.FIVE_MIN, '5m'),
+            (TimeFrame.FIFTEEN_MIN, '15m'),
+            (TimeFrame.THIRTY_MIN, '30m'),
             (TimeFrame.ONE_HOUR, '1h'),
             (TimeFrame.TWO_HOURS, '2h'),
             (TimeFrame.FOUR_HOURS, '4h'),
@@ -229,7 +238,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
 
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
-    @patch('test_binance_candles_fetcher.Client.get_historical_klines')
+    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
     def test_run(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
         """
         Test the run() method of BinanceCandlesFetcher.
@@ -269,7 +278,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
 
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.send')
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
-    @patch('test_binance_candles_fetcher.Client.get_historical_klines')
+    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
     def test_on_open(self, mock_get_historical_klines, mock_run_forever, mock_send):
         """
         Test the on_open() method of BinanceCandlesFetcher.
@@ -281,7 +290,86 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         cf = self.BinanceCandlesFetcher(*self.__DUMMY_ARGS)
         cf.run()
         cf.ws.on_open(cf.ws)
-        mock_send.assert_called_once_with('{"method": "SUBSCRIBE", "params": ["btcusdt@kline_1min"], "id": 1}')
+        mock_send.assert_called_once_with('{"method": "SUBSCRIBE", "params": ["btcusdt@kline_1m"], "id": 1}')
+
+    def test_merge_initial_history_with_ws_updates_and_overlap(self):
+        # setup some dummy dataframes
+        fmt = '%Y-%m-%d %H:%M'
+
+        initial_df = pd.DataFrame(
+            [
+                '2024-01-01 00:00',
+                '2024-01-01 01:00',
+                '2024-01-01 02:00'
+            ],
+            columns=['Opentime']
+        )
+        initial_df['Opentime'] = pd.to_datetime(initial_df.Opentime, format=fmt)
+
+        df = pd.DataFrame(
+            [
+                '2024-01-01 01:00',
+                '2024-01-01 02:00',
+                '2024-01-01 03:00'
+            ],
+            columns=['Opentime']
+        )
+        df['Opentime'] = pd.to_datetime(df.Opentime, format=fmt)
+
+        # merge
+        cf = self.BinanceCandlesFetcher(*self.__DUMMY_ARGS)
+        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
+            mock_df.return_value = df
+            with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
+                mock_initial_df.return_value = initial_df
+                cf.merge_initial_history_with_ws_updates()
+
+        # validate state
+        self.assertIsNone(cf.initial_df, 'Initial df should be none after merge')
+        self.assertIsInstance(cf.df, pd.DataFrame, 'df should be a DataFrame instance')
+        self.assertEqual(len(cf.df.index), 4, 'Merged length should equal 4')
+        self.assertEqual(cf.df.Opentime[0], initial_df.Opentime[0], '0. row from initial df')
+        self.assertEqual(cf.df.Opentime[1], initial_df.Opentime[1], '1. row from initial df')
+        self.assertEqual(cf.df.Opentime[2], initial_df.Opentime[2], '2. row from initial df')
+        self.assertEqual(cf.df.Opentime[3], df.Opentime[2], '3. row from ws update')
+
+    def test_merge_initial_history_with_ws_updates_and_no_overlap(self):
+        # setup some dummy dataframes
+        fmt = '%Y-%m-%d %H:%M'
+
+        initial_df = pd.DataFrame(
+            [
+                '2024-01-01 01:00',
+                '2024-01-01 02:00',
+                '2024-01-01 03:00'
+            ],
+            columns=['Opentime']
+        )
+        initial_df['Opentime'] = pd.to_datetime(initial_df.Opentime, format=fmt)
+
+        df = pd.DataFrame(
+            [
+                '2024-01-01 02:00',
+            ],
+            columns=['Opentime']
+        )
+        df['Opentime'] = pd.to_datetime(df.Opentime, format=fmt)
+
+        # merge
+        cf = self.BinanceCandlesFetcher(*self.__DUMMY_ARGS)
+        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
+            mock_df.return_value = df
+            with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
+                mock_initial_df.return_value = initial_df
+                cf.merge_initial_history_with_ws_updates()
+
+        # validate state
+        self.assertIsNone(cf.initial_df, 'Initial df should be none after merge')
+        self.assertIsInstance(cf.df, pd.DataFrame, 'df should be a DataFrame instance')
+        self.assertEqual(len(cf.df.index), 3, 'Merged length should equal 4')
+        self.assertEqual(cf.df.Opentime[0], initial_df.Opentime[0], '0. row from initial df')
+        self.assertEqual(cf.df.Opentime[1], initial_df.Opentime[1], '1. row from initial df')
+        self.assertEqual(cf.df.Opentime[2], initial_df.Opentime[2], '2. row from initial df')
 
 if __name__ == '__main__':
     unittest.main()

@@ -85,6 +85,10 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
         def is_initial_df_merged(self) -> bool:
             return self.__is_initial_df_merged
 
+        @property
+        def on_candles(self) -> Callable:
+            return self.__on_candles
+
         def get_native_client_time_frame(self):
             idx = self.time_frame.value - TimeFrame.ONE_SEC.value - 1
             if idx < 0:
@@ -112,11 +116,11 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             if idx < 0:
                 raise IndexError
             return [
-                '1min',
-                '3min',
-                '5min',
-                '15min',
-                '30min',
+                '1m',
+                '3m',
+                '5m',
+                '15m',
+                '30m',
                 '1h',
                 '2h',
                 '4h',
@@ -143,6 +147,28 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                 and datetime.utcnow() - df.Closetime.iloc[-1] <= self.valid_delay
             )
 
+        def merge_initial_history_with_ws_updates(self):
+            # find first index in df, that includes new data over the history
+            if self.df is None:
+                first_valid_idx = None
+            else:
+                first_valid_idx = self.df[
+                    self.initial_df.Opentime.iloc[-1] < self.df.Opentime
+                ].first_valid_index()
+
+            # if df doesn't have new data, use history entirely,
+            # otherwise concat newer data
+            if first_valid_idx is None:
+                self.__df = self.initial_df
+            else:
+                self.__df = pd.concat(
+                    [self.initial_df, self.df[first_valid_idx:]],
+                    ignore_index=True
+                )
+            # mark merge as completed
+            self.__initial_df           = None
+            self.__is_initial_df_merged = True
+
         def on_open(self, ws: WebSocketApp):
             # subscribe to candle events
             try:
@@ -159,13 +185,65 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                 exit(1)
 
         def on_message(self, ws: WebSocketApp, message: str):
-            raise NotImplementedError
+            try:
+                message = json.loads(message)
+
+                # check if it's a task result
+                if 'result' in message:
+                    # validate task succeeded
+                    if message['result']:
+                        raise RuntimeError(f'A websocket task failed with result {message["result"]}')
+                    return
+
+                # ignore unclosed candle events
+                if not message['k']['x']:
+                    return
+
+                # parse candle
+                update_df = pd.DataFrame(
+                    {
+                        'Opentime' : datetime.utcfromtimestamp(message['k']['t'] / 1000),
+                        'Open'     : float(message['k']['o']),
+                        'High'     : float(message['k']['h']),
+                        'Low'      : float(message['k']['l']),
+                        'Close'    : float(message['k']['c']),
+                        'Closetime': datetime.utcfromtimestamp(message['k']['T'] / 1000),
+                    },
+                    index=[0]
+                )
+
+                # ensure new candle is an actual update for the cache
+                if self.df is not None and update_df.Opentime[0] <= self.df.Opentime.iloc[-1]:
+                    return
+
+                # concat to df
+                self.__df = pd.concat([self.df, update_df], ignore_index=True)
+
+                # nothing to do if initial history not available and not already merged
+                if not self.is_initial_df_merged and self.initial_df is None:
+                    return
+
+                # merge initial history if available and not merged already
+                if not self.is_initial_df_merged and self.initial_df is not None:
+                    self.merge_initial_history_with_ws_updates()
+
+                # keep in limit
+                self.__df = self.truncate_df(self.df)
+
+                # callback if necessary
+                if self.does_df_need_callback(self.df):
+                    self.__last_callback_open_time = self.df.Opentime.iloc[-1]
+                    self.on_candles(self.df.copy())
+            except Exception:
+                # force program to quit if something happens
+                print(traceback.format_exc())
+                exit(1)
 
         def run(self) -> None:
             # reset state variables
-            self.__df                    = None
-            self.__initial_df            = None
-            self.__is_initial_df_merged  = False
+            self.__df                   = None
+            self.__initial_df           = None
+            self.__is_initial_df_merged = False
             # leave __last_callback_open_time as is for reconnections
 
             # init web socket
@@ -207,7 +285,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             # callback if necessary
             if self.does_df_need_callback(initial_history_df):
                 self.__last_callback_open_time = initial_history_df.Opentime.iloc[-1]
-                self.__on_candles(initial_history_df.copy())
+                self.on_candles(initial_history_df.copy())
 
             # set initial history to be merged with websocket updates
             self.__initial_df = initial_history_df
