@@ -371,5 +371,29 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         self.assertEqual(cf.df.Opentime[1], initial_df.Opentime[1], '1. row from initial df')
         self.assertEqual(cf.df.Opentime[2], initial_df.Opentime[2], '2. row from initial df')
 
+    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
+    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
+    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
+    def test_on_message_with_task_result(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
+        mock_get_historical_klines.return_value = self.__initial_history.copy()
+
+        # simulate ws update candle to be valid for callback
+        now = datetime.utcnow()
+        now -= timedelta(microseconds=now.microsecond)
+        message = self.__ws_history[0]
+        message['k']['T'] = calendar.timegm(now.utctimetuple()) * 1000
+
+        cf = self.BinanceCandlesFetcher('btcusdt', TimeFrame.ONE_MIN, self.on_candles)
+        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.merge_initial_history_with_ws_updates', side_effect=cf.merge_initial_history_with_ws_updates) as mock_merge_initial_history_with_ws_updates:
+            cf.run()
+            cf.on_message(cf.ws, json.dumps(self.__ws_history[0]))
+
+            # verify state
+            mock_merge_initial_history_with_ws_updates.assert_called_once()
+            mock_on_candles.assert_called_once()
+            self.assertIsNone(cf.initial_df, 'Initial df should be none after merge')
+            self.assertIsNotNone(cf.df, 'df should be set now')
+            self.assertEqual(cf.df.Closetime.iloc[-1], now, 'Update should be merged')
+
 if __name__ == '__main__':
     unittest.main()
