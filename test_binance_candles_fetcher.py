@@ -293,6 +293,14 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         mock_send.assert_called_once_with('{"method": "SUBSCRIBE", "params": ["btcusdt@kline_1m"], "id": 1}')
 
     def test_merge_initial_history_with_ws_updates_and_overlap(self):
+        """
+        Test merging initial history with websocket updates when there's overlap.
+
+        This test verifies that:
+        1. The initial dataframe and websocket updates are merged correctly.
+        2. The resulting dataframe has the expected length and content.
+        3. The initial_df is set to None after merging.
+        """
         # setup some dummy dataframes
         fmt = '%Y-%m-%d %H:%M'
 
@@ -334,6 +342,14 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         self.assertEqual(cf.df.Opentime[3], df.Opentime[2], '3. row from ws update')
 
     def test_merge_initial_history_with_ws_updates_and_no_overlap(self):
+        """
+        Test merging initial history with websocket updates when there's no overlap.
+
+        This test verifies that:
+        1. The initial dataframe is kept intact when there's no overlap with websocket updates.
+        2. The resulting dataframe has the expected length and content.
+        3. The initial_df is set to None after merging.
+        """
         # setup some dummy dataframes
         fmt = '%Y-%m-%d %H:%M'
 
@@ -374,7 +390,16 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
     @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
-    def test_on_message_with_task_result(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
+    def test_on_message_with_merge(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
+        """
+        Test the on_message method with initial history and websocket update.
+
+        This test verifies that:
+        1. The initial history is fetched correctly.
+        2. The websocket update is processed and merged with the initial history.
+        3. The on_candles callback is called after processing the update.
+        4. The state of the BinanceCandlesFetcher is updated correctly after processing the message.
+        """
         mock_get_historical_klines.return_value = self.__initial_history.copy()
 
         # simulate ws update candle to be valid for callback

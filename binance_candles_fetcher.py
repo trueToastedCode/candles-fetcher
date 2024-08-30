@@ -1,13 +1,38 @@
+import time
 from typing import Callable
 from datetime import datetime, timedelta
 import pandas as pd
 import json
 import traceback
+from awaitable import awaitable
 
 from time_frame import TimeFrame
+from candles_fetcher_contract import CandlesFetcherContract
 
 def build_binance_candles_fetcher(WebSocketApp, Client):
-    class BinanceCandlesFetcher:
+    """
+    Factory function to build a BinanceCandlesFetcher class with injected dependencies.
+
+    Args:
+        WebSocketApp: WebSocket application class from a WebSocket library.
+        Client: Binance API client class.
+
+    Returns:
+        BinanceCandlesFetcher: A class for fetching and managing candle data from Binance.
+    """
+
+    class BinanceCandlesFetcher(CandlesFetcherContract):
+        """
+        A class for fetching and managing candle data from Binance.
+
+        This class implements the CandlesFetcherContract and provides functionality to:
+        - Fetch historical candle data
+        - Maintain a live WebSocket connection for real-time updates
+        - Manage and update a DataFrame of candle data
+        - Trigger callbacks when new data is available, passing a copy of the internal cache
+        - Handles errors such as disconnections
+        """
+
         __DF_COLUMNS = ['Opentime', 'Open', 'High', 'Low', 'Close', 'Closetime']
 
         def __init__(
@@ -18,6 +43,20 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             max_size   : int        = 100,
             valid_delay: timedelta  = timedelta(seconds=20)
         ):
+            """
+            Initialize the BinanceCandlesFetcher.
+
+            Args:
+                symbol (str): The trading pair symbol (e.g., 'BTCUSDT').
+                time_frame (TimeFrame): The time frame for the candles.
+                on_candles (Callable[[pd.DataFrame], None]): Callback function to be called with new candle data.
+                    This function will receive a copy of the internal cache as a pandas DataFrame.
+                max_size (int, optional): Maximum number of candles to keep in memory. Defaults to 100.
+                valid_delay (timedelta, optional): Maximum allowed delay for considering data as valid. Defaults to 20 seconds.
+
+            Raises:
+                ValueError: If any of the input parameters are invalid.
+            """
             if not (isinstance(symbol, str) and symbol):
                 raise ValueError
             self.__symbol = symbol
@@ -44,6 +83,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             self.__initial_df              = None
             self.__is_initial_df_merged    = False
             self.__last_callback_open_time = None
+            self.__keep_running            = False
 
         @property
         def client(self) -> Client:
@@ -89,7 +129,20 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
         def on_candles(self) -> Callable:
             return self.__on_candles
 
+        @property
+        def keep_running(self) -> bool:
+            return self.__keep_running
+
         def get_native_client_time_frame(self):
+            """
+            Get the native Binance client time frame string for the current time frame.
+
+            Returns:
+                str: Binance client time frame string.
+
+            Raises:
+                IndexError: If the current time frame is not supported.
+            """
             idx = self.time_frame.value - TimeFrame.ONE_SEC.value - 1
             if idx < 0:
                 raise IndexError
@@ -112,6 +165,15 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             ][idx]
 
         def get_native_ws_timeframe(self):
+            """
+            Get the native WebSocket time frame string for the current time frame.
+
+            Returns:
+                str: WebSocket time frame string.
+
+            Raises:
+                IndexError: If the current time frame is not supported.
+            """
             idx = self.time_frame.value - TimeFrame.ONE_SEC.value - 1
             if idx < 0:
                 raise IndexError
@@ -134,11 +196,29 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             ][idx]
 
         def truncate_df(self, df: pd.DataFrame) -> pd.DataFrame:
+            """
+            Truncate the DataFrame to the maximum size.
+
+            Args:
+                df (pd.DataFrame): The DataFrame to truncate.
+
+            Returns:
+                pd.DataFrame: Truncated DataFrame.
+            """
             if len(df.index) > self.max_size:
                 return df.tail(self.max_size).reset_index(drop=True)
             return df
 
         def does_df_need_callback(self, df: pd.DataFrame) -> bool:
+            """
+            Check if the DataFrame needs a callback based on the last callback time and data validity.
+
+            Args:
+                df (pd.DataFrame): The DataFrame to check.
+
+            Returns:
+                bool: True if a callback is needed, False otherwise.
+            """
             return (
                 (
                     self.last_callback_open_time is None
@@ -148,6 +228,12 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             )
 
         def merge_initial_history_with_ws_updates(self):
+            """
+            Merge the initial historical data with WebSocket updates.
+
+            This method combines the initial historical data fetched from the REST API
+            with the real-time updates received via WebSocket.
+            """
             # find first index in df, that includes new data over the history
             if self.df is None:
                 first_valid_idx = None
@@ -170,6 +256,14 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             self.__is_initial_df_merged = True
 
         def on_open(self, ws: WebSocketApp):
+            """
+            Callback method called when the WebSocket connection is opened.
+
+            This method subscribes to the candle events for the specified symbol and time frame.
+
+            Args:
+                ws (WebSocketApp): The WebSocket application instance.
+            """
             # subscribe to candle events
             try:
                 ws.send(json.dumps({
@@ -180,11 +274,26 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                     'id': 1
                 }))
             except Exception:
-                # force program to quit if something happens
+                # there should be no error here, therefore any exception here is critical
+                # stop the websocket, possibly let it restart the callback loop
+                # note: raising an exception here doesn't stop ws.run_forever
                 print(traceback.format_exc())
-                exit(1)
+                try:
+                    self.ws.close()
+                except:
+                    pass
 
         def on_message(self, ws: WebSocketApp, message: str):
+            """
+            Callback method called when a message is received on the WebSocket.
+
+            This method processes the incoming candle data, updates the internal DataFrame,
+            and triggers the on_candles callback with a copy of the updated data if necessary.
+
+            Args:
+                ws (WebSocketApp): The WebSocket application instance.
+                message (str): The received message as a JSON string.
+            """
             try:
                 message = json.loads(message)
 
@@ -235,11 +344,23 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                     self.__last_callback_open_time = self.df.Opentime.iloc[-1]
                     self.on_candles(self.df.copy())
             except Exception:
-                # force program to quit if something happens
+                # there should be no error here, therefore any exception here is critical
+                # stop the websocket, possibly let it restart the callback loop
+                # note: raising an exception here doesn't stop ws.run_forever
                 print(traceback.format_exc())
-                exit(1)
+                try:
+                    self.ws.close()
+                except:
+                    pass
 
         def run(self) -> None:
+            """
+            Run the candle fetcher.
+
+            This method initializes the WebSocket, fetches initial historical data,
+            starts the WebSocket connection for real-time updates, and ensures that
+            the on_candles callback is called with a copy of the internal cache when new data arrives.
+            """
             # reset state variables
             self.__df                   = None
             self.__initial_df           = None
@@ -292,5 +413,43 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
 
             # keep websocket open until it disconnects
             self.ws.run_forever()
+
+        def run_forever(self):
+            """
+            Run the candle fetcher indefinitely.
+
+            This method keeps the candle fetcher running, handling disconnections and errors.
+            """
+            if self.keep_running:
+                raise ValueError
+            self.__keep_running = True
+            while self.keep_running:
+                try:
+                    self.run()
+                except:
+                    # on_message and on_open not caught here
+                    # errors there will just stop the websocket
+                    time.sleep(1)
+
+        @awaitable
+        def async_run_forever(self):
+            """
+            Asynchronously run the candle fetcher indefinitely.
+
+            This method is a wrapper around run_forever() that can be awaited for.
+            """
+            self.run_forever()
+
+        def stop(self):
+            """
+            Stop the candle fetcher.
+
+            This method stops the indefinite running of the candle fetcher and closes the WebSocket connection.
+            """
+            self.__keep_running = False
+            try:
+                self.ws.close()
+            except:
+                pass
 
     return BinanceCandlesFetcher
