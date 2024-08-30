@@ -1,13 +1,14 @@
 import time
 from typing import Callable
 from datetime import datetime, timedelta
-import pandas as pd
 import json
 import traceback
+
+import pandas as pd
 from awaitable import awaitable
 
-from time_frame import TimeFrame
-from candles_fetcher_contract import CandlesFetcherContract
+from candles_fetcher.time_frame import TimeFrame
+from candles_fetcher.candles_fetcher_contract import CandlesFetcherContract
 
 def build_binance_candles_fetcher(WebSocketApp, Client):
     """

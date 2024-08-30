@@ -1,26 +1,28 @@
 import unittest
 from unittest.mock import patch, PropertyMock
-import pandas as pd
-from binance.client import Client
-from websocket import WebSocketApp
 from datetime import datetime, timedelta
 import calendar
 import json
+import os
 
-from binance_candles_fetcher import build_binance_candles_fetcher
-from time_frame import TimeFrame
+import pandas as pd
+from binance.client import Client
+from websocket import WebSocketApp
+
+from candles_fetcher.binance_candles_fetcher import build_binance_candles_fetcher
+from candles_fetcher.time_frame import TimeFrame
 
 class TestBinanceCandlesFetcher(unittest.TestCase):
     """
     Test suite for the BinanceCandlesFetcher class.
 
-    This class contains unit tests for various methods and functionalities
+    This class contains unit test for various methods and functionalities
     of the BinanceCandlesFetcher, including initialization, data processing,
     and WebSocket interactions.
     """
 
-    __MOCK_LAST_CALLBACK_OPEN_TIME_PATH = 'test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.last_callback_open_time'
-    __MOCK_TIME_FRAME_PATH              = 'test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.time_frame'
+    __MOCK_LAST_CALLBACK_OPEN_TIME_PATH = 'candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.last_callback_open_time'
+    __MOCK_TIME_FRAME_PATH              = 'candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.time_frame'
 
     __DUMMY_ARGS = 'btcusdt', TimeFrame.ONE_MIN, lambda _: None, 100, timedelta(seconds=20)
 
@@ -48,12 +50,12 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         Set up the test environment before each test method is run.
 
         This method loads historical chart data from a JSON file and prepares
-        it for use in the tests, including splitting it into initial history
+        it for use in the test, including splitting it into initial history
         and WebSocket updates.
         """
         # load historical chart data
         # [(Open time, Open, High, Low, Close, Volume, Close time, Quote asset volume, Number of trades, Taker buy base asset volume, Taker buy quote asset volume, Ignore), ...]
-        with open('historical.json', 'r') as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'historical.json'), 'r') as f:
             data = json.load(f)
 
         # Split a part for the initial history
@@ -115,7 +117,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         """
         Test the does_df_need_callback() method of BinanceCandlesFetcher.
 
-        This method tests various scenarios to determine if a callback
+        This method test various scenarios to determine if a callback
         is needed based on the current time and the last callback time.
         """
         now = datetime.utcnow()
@@ -157,7 +159,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         """
         Test the get_native_client_time_frame() method of BinanceCandlesFetcher.
 
-        This method tests the conversion of TimeFrame enums to their
+        This method test the conversion of TimeFrame enums to their
         corresponding Binance Client interval strings.
         """
         # Test all intervals
@@ -196,7 +198,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         """
         Test the get_native_ws_timeframe() method of BinanceCandlesFetcher.
 
-        This method tests the conversion of TimeFrame enums to their
+        This method test the conversion of TimeFrame enums to their
         corresponding WebSocket interval strings.
         """
         # Test all intervals
@@ -236,14 +238,14 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         """Mock callback function for testing."""
         pass
 
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
     def test_run(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
         """
         Test the run() method of BinanceCandlesFetcher.
 
-        This method tests the initialization process, including fetching
+        This method test the initialization process, including fetching
         historical data, setting up the WebSocket, and triggering the
         initial callback.
         """
@@ -259,7 +261,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
 
         # instantiate fetcher and call run method
         cf = self.BinanceCandlesFetcher('btcusdt', TimeFrame.ONE_MIN, self.on_candles)
-        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.truncate_df', side_effect=cf.truncate_df) as mock_truncate_df:
+        with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.truncate_df', side_effect=cf.truncate_df) as mock_truncate_df:
             cf.run()
 
             # validate state
@@ -276,14 +278,14 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
             self.assertFalse(cf.is_initial_df_merged, "is_initial_df_merged should be False")
             self.assertIsNotNone(cf.ws, "WebSocket should be initialized")
 
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.send')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.send')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
     def test_on_open(self, mock_get_historical_klines, mock_run_forever, mock_send):
         """
         Test the on_open() method of BinanceCandlesFetcher.
 
-        This method tests the WebSocket connection opening process,
+        This method test the WebSocket connection opening process,
         including sending the subscription message.
         """
         mock_get_historical_klines.return_value = self.__initial_history.copy()
@@ -326,9 +328,9 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
 
         # merge
         cf = self.BinanceCandlesFetcher(*self.__DUMMY_ARGS)
-        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
+        with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
             mock_df.return_value = df
-            with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
+            with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
                 mock_initial_df.return_value = initial_df
                 cf.merge_initial_history_with_ws_updates()
 
@@ -373,9 +375,9 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
 
         # merge
         cf = self.BinanceCandlesFetcher(*self.__DUMMY_ARGS)
-        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
+        with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.df', new_callable=PropertyMock) as mock_df:
             mock_df.return_value = df
-            with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
+            with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.initial_df', new_callable=PropertyMock) as mock_initial_df:
                 mock_initial_df.return_value = initial_df
                 cf.merge_initial_history_with_ws_updates()
 
@@ -387,9 +389,9 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         self.assertEqual(cf.df.Opentime[1], initial_df.Opentime[1], '1. row from initial df')
         self.assertEqual(cf.df.Opentime[2], initial_df.Opentime[2], '2. row from initial df')
 
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
-    @patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.on_candles')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockWebSocketApp.run_forever')
+    @patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.MockClient.get_historical_klines')
     def test_on_message_with_merge(self, mock_get_historical_klines, mock_run_forever, mock_on_candles):
         """
         Test the on_message method with initial history and websocket update.
@@ -409,7 +411,7 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
         message['k']['T'] = calendar.timegm(now.utctimetuple()) * 1000
 
         cf = self.BinanceCandlesFetcher('btcusdt', TimeFrame.ONE_MIN, self.on_candles)
-        with patch('test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.merge_initial_history_with_ws_updates', side_effect=cf.merge_initial_history_with_ws_updates) as mock_merge_initial_history_with_ws_updates:
+        with patch('candles_fetcher.test.test_binance_candles_fetcher.TestBinanceCandlesFetcher.BinanceCandlesFetcher.merge_initial_history_with_ws_updates', side_effect=cf.merge_initial_history_with_ws_updates) as mock_merge_initial_history_with_ws_updates:
             cf.run()
             cf.on_message(cf.ws, json.dumps(self.__ws_history[0]))
 
