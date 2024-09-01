@@ -10,7 +10,7 @@ from awaitable import awaitable
 from candles_fetcher.time_frame import TimeFrame
 from candles_fetcher.candles_fetcher_contract import CandlesFetcherContract
 
-def build_binance_candles_fetcher(WebSocketApp, Client):
+def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContract:
     """
     Factory function to build a BinanceCandlesFetcher class with injected dependencies.
 
@@ -134,7 +134,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
         def keep_running(self) -> bool:
             return self.__keep_running
 
-        def get_native_client_time_frame(self):
+        def get_native_client_time_frame(self) -> str:
             """
             Get the native Binance client time frame string for the current time frame.
 
@@ -165,7 +165,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                 Client.KLINE_INTERVAL_1MONTH
             ][idx]
 
-        def get_native_ws_timeframe(self):
+        def get_native_ws_timeframe(self) -> str:
             """
             Get the native WebSocket time frame string for the current time frame.
 
@@ -221,14 +221,18 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                 bool: True if a callback is needed, False otherwise.
             """
             return (
+                # latest event must be newer than the previous callback
+                # this prevents duplicate callbacks, e.g. after a cache rebuild
                 (
                     self.last_callback_open_time is None
                     or self.last_callback_open_time < df.Opentime.iloc[-1]
                 )
+
+                # also, time now and latest close time must be in an acceptable delay
                 and datetime.utcnow() - df.Closetime.iloc[-1] <= self.valid_delay
             )
 
-        def merge_initial_history_with_ws_updates(self):
+        def merge_initial_history_with_ws_updates(self) -> None:
             """
             Merge the initial historical data with WebSocket updates.
 
@@ -256,7 +260,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             self.__initial_df           = None
             self.__is_initial_df_merged = True
 
-        def on_open(self, ws: WebSocketApp):
+        def on_open(self, ws: WebSocketApp) -> None:
             """
             Callback method called when the WebSocket connection is opened.
 
@@ -284,7 +288,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                 except:
                     pass
 
-        def on_message(self, ws: WebSocketApp, message: str):
+        def on_message(self, ws: WebSocketApp, message: str) -> None:
             """
             Callback method called when a message is received on the WebSocket.
 
@@ -415,7 +419,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             # keep websocket open until it disconnects
             self.ws.run_forever()
 
-        def run_forever(self):
+        def run_forever(self) -> None:
             """
             Run the candle fetcher indefinitely.
 
@@ -433,7 +437,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
                     time.sleep(1)
 
         @awaitable
-        def async_run_forever(self):
+        def async_run_forever(self) -> None:
             """
             Asynchronously run the candle fetcher indefinitely.
 
@@ -441,7 +445,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client):
             """
             self.run_forever()
 
-        def stop(self):
+        def stop(self) -> None:
             """
             Stop the candle fetcher.
 

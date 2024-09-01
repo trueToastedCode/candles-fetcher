@@ -32,7 +32,7 @@ class CandlesFetcherContract(ABC):
         pass
 
     @abstractmethod
-    def run_forever(self):
+    def run_forever(self) -> None:
         """
         Run the candle fetcher indefinitely.
 
@@ -47,7 +47,7 @@ class CandlesFetcherContract(ABC):
         pass
 
     @abstractmethod
-    def async_run_forever(self):
+    def async_run_forever(self) -> None:
         """
         Asynchronously run the candle fetcher indefinitely.
 
@@ -61,7 +61,7 @@ class CandlesFetcherContract(ABC):
         pass
 
     @abstractmethod
-    def stop(self):
+    def stop(self) -> None:
         """
         Stop the candle fetcher.
 
