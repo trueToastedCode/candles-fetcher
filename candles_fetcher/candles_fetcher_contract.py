@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Callable
+from datetime import timedelta
+
+from candles_fetcher.time_frame import TimeFrame
 
 class CandlesFetcherContract(ABC):
     """
@@ -14,15 +17,29 @@ class CandlesFetcherContract(ABC):
     """
 
     @abstractmethod
-    def __init__(self, on_candles: Callable, *args, **kwargs):
+    def __init__(
+        self,
+        symbol     : str,
+        time_frame : TimeFrame,
+        on_candles : Callable,
+        max_size   : int        = 100,
+        valid_delay: timedelta  = timedelta(seconds=20),
+        *args,
+        **kwargs
+    ):
         """
         Initialize the candle fetcher.
 
         Args:
+            symbol (str): The trading symbol for which to fetch candles.
+            time_frame (TimeFrame): The time frame of the candles to fetch.
             on_candles (Callable[[pd.DataFrame], None]): Callback function to be called with new candle data.
                 This function should accept a single argument 'df', which is a pandas DataFrame
                 containing the columns 'Opentime', 'Open', 'High', 'Low', 'Close', 'Closetime'.
                 The DataFrame passed to this callback must be a copy of the internal cache.
+            max_size (int, optional): The maximum number of candles to keep in memory. Defaults to 100.
+            valid_delay (timedelta, optional): The maximum allowed delay for considering a candle valid.
+                Defaults to 20 seconds.
             *args: Variable length argument list for additional parameters.
             **kwargs: Arbitrary keyword arguments for additional parameters.
 
