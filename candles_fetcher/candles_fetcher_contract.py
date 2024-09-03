@@ -21,7 +21,7 @@ class CandlesFetcherContract(ABC):
         self,
         symbol     : str,
         time_frame : TimeFrame,
-        on_candles : Callable,
+        on_candles : Callable[[list[dict]], None],
         max_size   : int        = 100,
         valid_delay: timedelta  = timedelta(seconds=20),
         *args,
@@ -33,10 +33,11 @@ class CandlesFetcherContract(ABC):
         Args:
             symbol (str): The trading symbol for which to fetch candles.
             time_frame (TimeFrame): The time frame of the candles to fetch.
-            on_candles (Callable[[pd.DataFrame], None]): Callback function to be called with new candle data.
-                This function should accept a single argument 'df', which is a pandas DataFrame
-                containing the columns 'Opentime', 'Open', 'High', 'Low', 'Close', 'Closetime'.
-                The DataFrame passed to this callback must be a copy of the internal cache.
+            on_candles (Callable[[list[dict]], None]): Callback function to be called with new candle data.
+                This function should accept a single argument, which is a list.
+                containing a dict with the keys:
+                  'ot' (Opentime, datetime), 'o' (Open, float), 'h' (High, float),
+                  'l' (Low, float), 'c' (Close, float), 'ct' (Closetime, datetime).
             max_size (int, optional): The maximum number of candles to keep in memory. Defaults to 100.
             valid_delay (timedelta, optional): The maximum allowed delay for considering a candle valid.
                 Defaults to 20 seconds.
@@ -59,7 +60,7 @@ class CandlesFetcherContract(ABC):
 
         During its operation, this method should call the on_candles callback
         whenever new data is available, passing a copy of the internal cache
-        as a pandas DataFrame.
+        as a dictionary.
         """
         pass
 

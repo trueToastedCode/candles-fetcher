@@ -13,6 +13,7 @@ from candles_fetcher.candles_fetcher_contract import CandlesFetcherContract
 def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContract:
     """
     Factory function to build a BinanceCandlesFetcher class with injected dependencies.
+    They are not necessarily ment to be framework abstractions.
 
     Args:
         WebSocketApp: WebSocket application class from a WebSocket library.
@@ -40,7 +41,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
             self,
             symbol     : str,
             time_frame : TimeFrame,
-            on_candles : Callable,
+            on_candles : Callable[[list[dict]], None],
             max_size   : int        = 100,
             valid_delay: timedelta  = timedelta(seconds=20)
         ):
@@ -50,7 +51,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
             Args:
                 symbol (str): The trading pair symbol (e.g., 'BTCUSDT').
                 time_frame (TimeFrame): The time frame for the candles.
-                on_candles (Callable[[pd.DataFrame], None]): Callback function to be called with new candle data.
+                on_candles (Callable[[list[dict]], None]): Callback function to be called with new candle data.
                     This function will receive a copy of the internal cache as a pandas DataFrame.
                 max_size (int, optional): Maximum number of candles to keep in memory. Defaults to 100.
                 valid_delay (timedelta, optional): Maximum allowed delay for considering data as valid. Defaults to 20 seconds.
@@ -232,6 +233,42 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
                 and datetime.utcnow() - df.Closetime.iloc[-1] <= self.valid_delay
             )
 
+        def export_df(self, df) -> list[dict]:
+            """
+            Export a DataFrame to a list of dictionaries with renamed columns.
+
+            This method takes a DataFrame, renames specific columns to shorter versions,
+            and converts the DataFrame to a list of dictionaries.
+
+            Args:
+                df (pandas.DataFrame): The input DataFrame to be exported.
+
+            Returns:
+                list[dict]: A list of dictionaries, where each dictionary represents a row
+                            in the DataFrame with renamed columns.
+
+            Column mappings:
+                'Opentime' -> 'ot'
+                'Open' -> 'o'
+                'High' -> 'h'
+                'Low' -> 'c'
+                'Close' -> 'l'
+                'Closetime' -> 'ct'
+
+            Note:
+                This method assumes that the input DataFrame contains at least some of
+                the columns specified in the renaming dictionary. Columns not present
+                in the DataFrame will be ignored during the renaming process.
+            """
+            return df.rename(columns={
+                'Opentime': 'ot',
+                'Open': 'o',
+                'High': 'h',
+                'Low': 'c',
+                'Close': 'l',
+                'Closetime': 'ct'
+            }).to_dict(orient='records')
+
         def merge_initial_history_with_ws_updates(self) -> None:
             """
             Merge the initial historical data with WebSocket updates.
@@ -347,7 +384,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
                 # callback if necessary
                 if self.does_df_need_callback(self.df):
                     self.__last_callback_open_time = self.df.Opentime.iloc[-1]
-                    self.on_candles(self.df.copy())
+                    self.on_candles(self.export_df(self.df))
             except Exception:
                 # there should be no error here, therefore any exception here is critical
                 # stop the websocket, possibly let it restart the callback loop
@@ -411,7 +448,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
             # callback if necessary
             if self.does_df_need_callback(initial_history_df):
                 self.__last_callback_open_time = initial_history_df.Opentime.iloc[-1]
-                self.on_candles(initial_history_df.copy())
+                self.on_candles(self.export_df(initial_history_df))
 
             # set initial history to be merged with websocket updates
             self.__initial_df = initial_history_df
