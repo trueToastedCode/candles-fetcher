@@ -342,7 +342,7 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
                 # check if it's a task result
                 if 'result' in message:
                     # validate task succeeded
-                    if message['result']:
+                    if message['result'] is not None:
                         raise RuntimeError(f'A websocket task failed with result {message["result"]}')
                     return
 
