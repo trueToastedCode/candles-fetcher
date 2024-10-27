@@ -260,14 +260,17 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
                 the columns specified in the renaming dictionary. Columns not present
                 in the DataFrame will be ignored during the renaming process.
             """
-            return df.rename(columns={
-                'Opentime': 'ot',
-                'Open': 'o',
-                'High': 'h',
-                'Low': 'c',
-                'Close': 'l',
+            df = df.rename(columns={
+                'Opentime' : 'ot',
+                'Open'     : 'o',
+                'High'     : 'h',
+                'Low'      : 'c',
+                'Close'    : 'l',
                 'Closetime': 'ct'
-            }).to_dict(orient='records')
+            })
+            df.ot = df.ot.dt.tz_localize('UTC').astype(int) // 10 ** 9
+            df.ct = df.ct.dt.tz_localize('UTC').astype(int) // 10 ** 9
+            return df.to_dict(orient='records')
 
         def merge_initial_history_with_ws_updates(self) -> None:
             """
