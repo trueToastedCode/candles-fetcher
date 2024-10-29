@@ -271,8 +271,8 @@ class TestBinanceCandlesFetcher(unittest.TestCase):
             mock_truncate_df.assert_called_once()
             callback_df = mock_on_candles.call_args[0][0]
             self.assertEqual(len(callback_df), 100, "Callback DataFrame should have 100 rows")
-            self.assertEqual(callback_df[-1]['ct'], calendar.timegm(now.utctimetuple()), "Last closetime should match current time")
-            self.assertEqual(calendar.timegm(cf.last_callback_open_time.utctimetuple()), callback_df[-1]['ot'], "last_callback_open_time should match last opentime in DataFrame")
+            self.assertEqual(callback_df[-1]['Closetime'], calendar.timegm(now.utctimetuple()), "Last closetime should match current time")
+            self.assertEqual(calendar.timegm(cf.last_callback_open_time.utctimetuple()), callback_df[-1]['Opentime'], "last_callback_open_time should match last opentime in DataFrame")
             self.assertIsNotNone(cf.initial_df, "initial_df should be set")
             self.assertIsNone(cf.df, "df should be None after initial callback")
             self.assertFalse(cf.is_initial_df_merged, "is_initial_df_merged should be False")

@@ -4,8 +4,8 @@ Retrieve live market candle data with a periodic callback.
 ```
 from candles_fetcher import BinanceCandlesFetcher, TimeFrame
 
-def on_candles(df):
-    print(df)
+def on_candles(candles):
+    print(candles)
 
 if __name__ == '__main__':
     cf = BinanceCandlesFetcher('btcusdt', TimeFrame.ONE_MIN, on_candles)

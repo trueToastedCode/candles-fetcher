@@ -247,29 +247,22 @@ def build_binance_candles_fetcher(WebSocketApp, Client) -> CandlesFetcherContrac
                 list[dict]: A list of dictionaries, where each dictionary represents a row
                             in the DataFrame with renamed columns.
 
-            Column mappings:
-                'Opentime' -> 'ot'
-                'Open' -> 'o'
-                'High' -> 'h'
-                'Low' -> 'c'
-                'Close' -> 'l'
-                'Closetime' -> 'ct'
+            Columns:
+                'Opentime'
+                'Open'
+                'High'
+                'Low'
+                'Close'
+                'Closetime'
 
             Note:
                 This method assumes that the input DataFrame contains at least some of
                 the columns specified in the renaming dictionary. Columns not present
                 in the DataFrame will be ignored during the renaming process.
             """
-            df = df.rename(columns={
-                'Opentime' : 'ot',
-                'Open'     : 'o',
-                'High'     : 'h',
-                'Low'      : 'c',
-                'Close'    : 'l',
-                'Closetime': 'ct'
-            })
-            df.ot = df.ot.dt.tz_localize('UTC').astype(int) // 10 ** 9
-            df.ct = df.ct.dt.tz_localize('UTC').astype(int) // 10 ** 9
+            df = df.copy()
+            df.Opentime = df.Opentime.dt.tz_localize('UTC').astype(int) // 10 ** 9
+            df.Closetime = df.Closetime.dt.tz_localize('UTC').astype(int) // 10 ** 9
             return df.to_dict(orient='records')
 
         def merge_initial_history_with_ws_updates(self) -> None:
